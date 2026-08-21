@@ -1,0 +1,234 @@
+# -*- coding: utf-8 -*-
+"""전일(정확히는 마지막 분석 이후) 대화를 claude -p 로 분석해 브리핑과 할 일 목록을 갱신한다."""
+import json
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import collect
+
+# exe(frozen)로 실행되면 데이터는 exe 옆에 둔다
+if getattr(sys, "frozen", False):
+    BASE = Path(sys.executable).parent
+else:
+    BASE = Path(__file__).parent
+TASKS_FILE = BASE / "tasks.json"
+BRIEF_DIR = BASE / "briefings"
+INBOX = BASE / "inbox"
+LOG_DIR = BASE / "logs"
+MODEL = "opus"
+
+
+def find_claude():
+    """PC마다 다른 Claude Code CLI 위치를 자동 탐색."""
+    p = shutil.which("claude")
+    if p:
+        return p
+    cand = Path.home() / ".local" / "bin" / "claude.exe"
+    if cand.exists():
+        return str(cand)
+    raise RuntimeError("Claude Code CLI를 찾을 수 없습니다. "
+                       "이 PC에 Claude Code 설치·로그인이 필요합니다.")
+STATUSES = ("진행", "보류", "완료")
+WEEKDAYS = "월화수목금토일"
+
+
+def log(msg):
+    LOG_DIR.mkdir(exist_ok=True)
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n"
+    with open(LOG_DIR / f"analyze-{datetime.now():%Y%m}.log", "a", encoding="utf-8") as f:
+        f.write(line)
+
+
+def load_state():
+    if TASKS_FILE.exists():
+        state = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+    else:
+        state = {"last_run": None, "seq": 0, "tasks": []}
+    state.setdefault("deleted", [])
+    gone = [t for t in state["tasks"] if t["status"] == "삭제"]
+    if gone:
+        state["tasks"] = [t for t in state["tasks"] if t["status"] != "삭제"]
+        state["deleted"] += [t["title"] for t in gone]
+    return state
+
+
+def save_state(state):
+    tmp = TASKS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(TASKS_FILE)
+
+
+def read_inbox():
+    docs, used = [], []
+    total = 0
+    for p in sorted(INBOX.glob("*")):
+        if not p.is_file() or p.suffix.lower() not in (".txt", ".md"):
+            continue
+        try:
+            body = p.read_text(encoding="utf-8", errors="replace")[:30000]
+        except Exception:
+            continue
+        if total + len(body) > 60000:
+            break
+        docs.append(f"\n### 참고 문서: {p.name}\n{body}\n")
+        used.append(p)
+        total += len(body)
+    return "".join(docs), used
+
+
+def user_name():
+    cfg = BASE / "config.json"
+    if cfg.exists():
+        try:
+            return json.loads(cfg.read_text(encoding="utf-8")).get(
+                "user_name", "사용자")
+        except Exception:
+            pass
+    return "사용자"
+
+
+def build_prompt(digest, inbox_text, tasks, deleted):
+    now = datetime.now().astimezone()
+    today = f"{now:%Y-%m-%d} ({WEEKDAYS[now.weekday()]}) {now:%H:%M} 현재"
+    task_lines = [
+        f'- {t["id"]} [{t["status"]}] {t["title"]} (프로젝트: {t.get("project","")}, 기한: {t.get("due") or "없음"})'
+        for t in tasks
+    ]
+    return f"""당신은 {user_name()}의 업무 브리핑 비서다. 오늘은 {today}이다.
+아래에 (1) 최근 Claude 작업 세션의 대화 발췌, (2) 참고 문서, (3) 현재 할 일 목록이 있다.
+
+반드시 아래 형태의 JSON 객체 하나만 출력하라. 코드펜스, 설명, 다른 텍스트 일절 금지. 도구 사용 금지.
+{{
+ "briefing": "(플레인 텍스트 브리핑)",
+ "new_tasks": [{{"title": "", "project": "", "due": "YYYY-MM-DD 또는 null", "note": ""}}],
+ "updates": [{{"id": "T001", "status": "완료", "reason": ""}}]
+}}
+
+briefing 작성 형식(이모지·장식·과장 금지, 담백한 한국어):
+[어제까지 한 일]
+- 프로젝트별로 굵직한 것 위주 3~7줄
+[오늘 할 일]
+- 이어서 해야 할 일을 기한 임박 순으로
+[기한·일정 언급]
+- 대화나 문서에서 발견한 기한 문장의 요지와 환산한 날짜 (없으면 "새로 발견된 기한 없음")
+
+규칙:
+- new_tasks: 대화·문서에서 "~까지 해야 한다"류의 할 일과 기한을 찾아 추가하되, 현재 목록이나 아래 "삭제된 항목"에 이미 같은 일이 있으면 다시 넣지 않는다.
+- 상대적 기한("다음 주 수요일까지", "킥오프 전")은 오늘 날짜 기준 구체 날짜로 환산하고, 근거가 약하면 due를 null로 둔다.
+- updates: 대화에서 끝났다고 확인되는 기존 할 일만 status "완료"로 제안한다. status 값은 진행/보류/완료 중 하나.
+- 확실하지 않은 것은 만들어내지 않는다.
+
+### 현재 할 일 목록
+{chr(10).join(task_lines) if task_lines else "(비어 있음)"}
+
+### 삭제된 항목 (다시 추가 금지)
+{chr(10).join("- " + d for d in deleted) if deleted else "(없음)"}
+
+### 최근 세션 대화 발췌
+{digest if digest.strip() else "(기간 내 대화 없음)"}
+{inbox_text}"""
+
+
+def call_claude(prompt):
+    proc = subprocess.run(
+        [find_claude(), "-p", "--model", MODEL],
+        input=prompt,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=900,
+        cwd=str(BASE),
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p 실패 (code {proc.returncode}): {proc.stderr[:500]}")
+    return proc.stdout
+
+
+def parse_json(raw):
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("응답에서 JSON을 찾지 못함")
+    return json.loads(raw[start : end + 1])
+
+
+def merge(state, result):
+    now = f"{datetime.now():%Y-%m-%d %H:%M}"
+    by_id = {t["id"]: t for t in state["tasks"]}
+    for upd in result.get("updates", []):
+        t = by_id.get(upd.get("id"))
+        status = upd.get("status")
+        if t and status in STATUSES and t["status"] != status:
+            t["status"] = status
+            t["updated"] = now
+            t["auto_note"] = f'자동 변경: {upd.get("reason", "")}'.strip()
+    existing_titles = {t["title"] for t in state["tasks"]} | set(
+        state.get("deleted", []))
+    for nt in result.get("new_tasks", []):
+        title = (nt.get("title") or "").strip()
+        if not title or title in existing_titles:
+            continue
+        state["seq"] += 1
+        state["tasks"].append({
+            "id": f'T{state["seq"]:03d}',
+            "title": title,
+            "project": (nt.get("project") or "").strip(),
+            "due": nt.get("due") or None,
+            "note": (nt.get("note") or "").strip(),
+            "status": "진행",
+            "source": "auto",
+            "created": now,
+            "updated": now,
+        })
+
+
+def run(days=None):
+    INBOX.mkdir(exist_ok=True)
+    (INBOX / "processed").mkdir(exist_ok=True)
+    state = load_state()
+    now = datetime.now().astimezone()
+    if days is not None:
+        since = now - timedelta(days=days)
+    elif state["last_run"]:
+        since = datetime.fromisoformat(state["last_run"]) - timedelta(hours=1)
+    else:
+        since = now - timedelta(days=1)
+    log(f"분석 시작: {since:%Y-%m-%d %H:%M} 이후")
+
+    digest = collect.build_digest(since)
+    inbox_text, inbox_files = read_inbox()
+    log(f"수집 완료: 발췌 {len(digest):,}자, 문서 {len(inbox_files)}건")
+
+    raw = call_claude(build_prompt(digest, inbox_text, state["tasks"],
+                                   state.get("deleted", [])))
+    result = parse_json(raw)
+
+    merge(state, result)
+    state["last_run"] = now.isoformat()
+    save_state(state)
+
+    briefing = result.get("briefing", "").strip()
+    header = f"===== {now:%Y-%m-%d} ({WEEKDAYS[now.weekday()]}) {now:%H:%M} 브리핑 =====\n\n"
+    BRIEF_DIR.mkdir(exist_ok=True)
+    (BRIEF_DIR / f"{now:%Y-%m-%d}.txt").write_text(header + briefing + "\n", encoding="utf-8")
+    (BASE / "latest.txt").write_text(header + briefing + "\n", encoding="utf-8")
+
+    for p in inbox_files:
+        shutil.move(str(p), str(INBOX / "processed" / p.name))
+    log(f'분석 완료: 신규 {len(result.get("new_tasks", []))}건, 갱신 {len(result.get("updates", []))}건')
+
+
+if __name__ == "__main__":
+    days = None
+    if "--days" in sys.argv:
+        days = float(sys.argv[sys.argv.index("--days") + 1])
+    try:
+        run(days)
+    except Exception as e:
+        log(f"오류: {e!r}")
+        raise

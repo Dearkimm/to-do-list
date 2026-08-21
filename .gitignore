@@ -1,0 +1,16 @@
+# 개인 데이터 (업무 내용 포함 — 절대 커밋 금지)
+config.json
+tasks.json
+latest.txt
+briefings/
+logs/
+inbox/
+
+# 빌드 산출물
+build/
+dist/
+*.spec
+WorkStatus.exe
+__pycache__/
+*.pyc
+preview_*.png
