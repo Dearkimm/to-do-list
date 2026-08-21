@@ -6,6 +6,8 @@ Claude Code 세션 기록을 매일 아침 자동으로 분석하여, "어제까
 
 ![Work Status](docs/screenshot.png)
 
+> 처음 설치하는 경우 **[INSTALL.md](INSTALL.md)** 를 따라 진행하세요. 제약사항 확인부터 문제 해결까지 순서대로 정리되어 있습니다.
+
 ## 1. 동작 구조
 
 ```
