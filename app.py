@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""아침 브리핑 + 할 일 목록 GUI. 실행하면 최신 브리핑을 즉시 보여준다."""
+"""할 일 정리 GUI. 실행하면 최신 정리 내용을 즉시 보여준다."""
 import ctypes
 import json
 import subprocess
@@ -92,19 +92,19 @@ def save_state(state):
 
 
 def parse_sections(text):
-    """브리핑을 [제목] 단위 섹션으로 쪼갠다."""
+    """정리 내용을 [제목] 단위 섹션으로 쪼갠다."""
     sections, title, buf = [], None, []
     for line in text.splitlines():
         s = line.strip()
         if s.startswith("[") and s.endswith("]") and 2 < len(s) <= 30:
             if title is not None or any(l.strip() for l in buf):
-                sections.append((title or "브리핑", "\n".join(buf).strip()))
+                sections.append((title or "정리", "\n".join(buf).strip()))
             title, buf = s[1:-1], []
         else:
             buf.append(line)
     if title is not None or any(l.strip() for l in buf):
-        sections.append((title or "브리핑", "\n".join(buf).strip()))
-    return sections or [("브리핑", text.strip())]
+        sections.append((title or "정리", "\n".join(buf).strip()))
+    return sections or [("정리", text.strip())]
 
 
 class App:
@@ -204,7 +204,7 @@ class App:
         self.btn_analyze = self.pink_button(bar, "새로고침", self.run_analyze)
         self.btn_analyze.pack(side="right", padx=(0, 6))
 
-        # ----- 브리핑 탭 -----
+        # ----- 정리 탭 -----
         bc = tk.Frame(root, bg=CARD, highlightthickness=1,
                       highlightbackground=BORDER)
         bc.pack(fill="x", padx=20, pady=(8, 0))
@@ -287,7 +287,7 @@ class App:
             lines = LATEST.read_text(encoding="utf-8").splitlines()
             text = "\n".join(lines[2:]).strip() if len(lines) > 2 else ""
         else:
-            text = "아직 브리핑이 없습니다. [새로고침]을 눌러 첫 브리핑을 만드세요."
+            text = "아직 정리된 내용이 없습니다. [새로고침]을 눌러 만드세요."
         for tab in self.nb.tabs():
             self.nb.forget(tab)
         s = self.scale
@@ -622,7 +622,7 @@ class App:
             return
         self.analyzing = True
         self.btn_analyze.configure(state="disabled")
-        note = "브리핑이 오래되어 자동 새로고침을 시작했습니다" if auto else "새로고침 중"
+        note = "정리가 오래되어 자동 새로고침을 시작했습니다" if auto else "새로고침 중"
         self.status_lbl.configure(text=f"{note}… 2~4분 걸립니다.")
 
         def work():
@@ -705,7 +705,7 @@ def install_schedule():
     if not exe:
         raise RuntimeError("스케줄 등록은 exe 버전에서만 지원합니다.")
     subprocess.run(
-        ["schtasks", "/Create", "/TN", "ClaudeBriefingDaily", "/SC", "DAILY",
+        ["schtasks", "/Create", "/TN", "WorkStatusDaily", "/SC", "DAILY",
          "/ST", "08:50", "/F", "/TR", f'"{exe}" --analyze'],
         check=True, creationflags=subprocess.CREATE_NO_WINDOW)
 

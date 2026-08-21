@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""전일(정확히는 마지막 분석 이후) 대화를 claude -p 로 분석해 브리핑과 할 일 목록을 갱신한다."""
+"""전일(정확히는 마지막 분석 이후) 대화를 claude -p 로 분석해 요약과 할 일 목록을 갱신한다."""
 import json
 import re
 import shutil
@@ -98,12 +98,12 @@ def build_prompt(digest, inbox_text, tasks, deleted):
         f'- {t["id"]} [{t["status"]}] {t["title"]} (프로젝트: {t.get("project","")}, 기한: {t.get("due") or "없음"})'
         for t in tasks
     ]
-    return f"""당신은 {user_name()}의 업무 브리핑 비서다. 오늘은 {today}이다.
+    return f"""당신은 {user_name()}의 업무 비서다. 오늘은 {today}이다.
 아래에 (1) 최근 Claude 작업 세션의 대화 발췌, (2) 참고 문서, (3) 현재 할 일 목록이 있다.
 
 반드시 아래 형태의 JSON 객체 하나만 출력하라. 코드펜스, 설명, 다른 텍스트 일절 금지. 도구 사용 금지.
 {{
- "briefing": "(플레인 텍스트 브리핑)",
+ "briefing": "(플레인 텍스트 정리)",
  "new_tasks": [{{"title": "", "project": "", "due": "YYYY-MM-DD 또는 null", "note": ""}}],
  "updates": [{{"id": "T001", "status": "완료", "reason": ""}}]
 }}
@@ -213,7 +213,7 @@ def run(days=None):
     save_state(state)
 
     briefing = result.get("briefing", "").strip()
-    header = f"===== {now:%Y-%m-%d} ({WEEKDAYS[now.weekday()]}) {now:%H:%M} 브리핑 =====\n\n"
+    header = f"===== {now:%Y-%m-%d} ({WEEKDAYS[now.weekday()]}) {now:%H:%M} 요약 =====\n\n"
     BRIEF_DIR.mkdir(exist_ok=True)
     (BRIEF_DIR / f"{now:%Y-%m-%d}.txt").write_text(header + briefing + "\n", encoding="utf-8")
     (BASE / "latest.txt").write_text(header + briefing + "\n", encoding="utf-8")

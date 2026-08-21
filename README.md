@@ -1,8 +1,10 @@
 # Work Status
 
-Claude Code 세션 기록을 매일 아침 자동으로 분석하여, "어제까지 한 일 / 오늘 할 일 / 기한"을 정리해 보여주는 Windows용 개인 브리핑 프로그램입니다.
+Claude Code 세션 기록을 매일 아침 자동으로 분석하여, "어제까지 한 일 / 오늘 할 일 / 기한"을 할 일 목록으로 정리해주는 Windows용 TO-DO 관리 프로그램입니다.
 
 프로젝트가 방대해지면 "이게 뭐였지, 어디까지 했지"를 찾는 데 시간이 오래 걸립니다. 이 프로그램의 경우 Claude Code로 작업한 대화 기록이 전부 로컬 파일로 남는다는 점을 이용하여, 그 기록을 하루 한 번 AI로 요약해 할 일 목록으로 관리합니다.
+
+![Work Status](docs/screenshot.png)
 
 ## 1. 동작 구조
 
@@ -16,7 +18,7 @@ Claude Code 세션 기록을 매일 아침 자동으로 분석하여, "어제까
   latest.txt / tasks.json 저장
 
 [프로그램 실행 시]
-  app.py       저장된 브리핑을 즉시 표시 (탭 3개 + 할 일 체크리스트)
+  app.py       정리된 내용을 즉시 표시 (탭 3개 + 할 일 체크리스트)
 ```
 
 - 분석은 사용 중인 Claude 구독 안에서 돌아가며 별도 API 과금이 없습니다.
@@ -30,13 +32,13 @@ Claude Code 세션 기록을 매일 아침 자동으로 분석하여, "어제까
 
 ## 3. 설치 방법 A — exe 한 개로 (가장 간단)
 
-1. `WorkStatus.exe`를 원하는 폴더에 복사합니다. (데이터 파일이 exe 옆에 생성되므로 전용 폴더 권장)
-2. 실행 후 [새로고침]을 누르면 첫 브리핑이 생성됩니다. (2~4분 소요)
+1. [Releases](../../releases)에서 `WorkStatus.exe`를 받아 원하는 폴더에 복사합니다. (데이터 파일이 exe 옆에 생성되므로 전용 폴더 권장)
+2. 실행 후 [새로고침]을 누르면 첫 정리가 생성됩니다. (2~4분 소요)
 3. 아침 자동 분석을 원하는 경우 명령 프롬프트에서 아래를 한 번 실행합니다.
    ```
    WorkStatus.exe --install-schedule
    ```
-4. 이름 설정: exe 옆에 `config.json` 파일을 만들어 넣으면 브리핑에 반영됩니다. (`config.example.json` 참고)
+4. 이름 설정: exe 옆에 `config.json` 파일을 만들어 넣으면 분석에 반영됩니다. (`config.example.json` 참고)
 
 주의사항:
 - 처음 실행 시 SmartScreen 경고가 뜨면 [추가 정보 → 실행]으로 진행합니다.
@@ -50,18 +52,18 @@ Claude Code 세션 기록을 매일 아침 자동으로 분석하여, "어제까
 4. 실행: `pythonw app.py` (바로가기를 만들 때는 대상: `pythonw.exe "...\app.py"`, 아이콘: `app.ico`)
 5. 아침 자동 분석 등록:
    ```
-   schtasks /Create /TN ClaudeBriefingDaily /SC DAILY /ST 08:50 /F /TR "\"C:\...\pythonw.exe\" \"C:\...\analyze.py\""
+   schtasks /Create /TN WorkStatusDaily /SC DAILY /ST 08:50 /F /TR "\"C:\...\pythonw.exe\" \"C:\...\analyze.py\""
    ```
 
 ## 5. 사용법
 
-- **브리핑 탭**: 어제까지 한 일 / 오늘 할 일 / 기한·일정 언급이 탭으로 나뉩니다.
+- **정리 탭**: 어제까지 한 일 / 오늘 할 일 / 기한·일정 언급이 탭으로 나뉩니다.
 - **체크박스**: 클릭하면 완료 처리, 다시 클릭하면 해제됩니다.
 - **더블클릭**: 항목의 전체 내용(메모·기한)이 팝업으로 열립니다.
 - **프로젝트 ▼ 헤더**: 클릭하면 프로젝트별 필터 메뉴가 열립니다.
 - **[삭제]**: 확인 후 목록에서 완전히 제거되며, 다음 분석 때 같은 항목이 되살아나지 않도록 내부적으로 차단됩니다.
 - **[전체 검색]**: 전체 세션 기록에서 키워드를 찾습니다. (AI 미사용, 무료)
-- **inbox 폴더**: 주간보고 등 문서를 txt/md로 넣어두면 다음 분석 때 기한·할 일을 추출한 뒤 `inbox/processed/`로 옮겨집니다.
+- **inbox 폴더**: 문서를 txt/md로 넣어두면 다음 분석 때 기한·할 일을 추출한 뒤 `inbox/processed/`로 옮겨집니다.
 - 세션에 "~까지 이거 해야 됨"이라고 적으면 다음 분석 때 자동으로 할 일에 등록됩니다.
 
 ## 6. exe 직접 빌드
@@ -77,7 +79,7 @@ python -m PyInstaller --noconfirm --onefile --windowed --icon app.ico --name Wor
 
 - 각 PC는 자기 세션만 읽습니다. PC 간 할 일 목록 통합은 지원하지 않습니다. (tasks.json도 PC별)
 - 완료 자동 감지는 대화에 "~완료"가 명시된 경우에만 동작하며, 그 외에는 체크박스로 직접 처리합니다.
-- 아이콘·헤더의 캐릭터 이미지는 개인 소장 이미지를 잘라 쓴 것이므로, 이 레포는 **비공개(private) 유지**를 전제로 합니다. 공개 전환이 필요한 경우 `kitty_source.jpg`를 자유 이용 가능한 이미지로 교체하고 `python make_kitty.py`로 재생성해야 합니다.
+- 아이콘·헤더 이미지를 바꾸고 싶은 경우 원하는 이미지를 `kitty_source.jpg`로 저장하고 `make_kitty.py`의 크롭 좌표를 조정해 실행하면 `app.ico`와 `kitty.png`가 재생성됩니다.
 - 동봉된 Pretendard 폰트는 SIL OFL 1.1 라이선스입니다. (`fonts/LICENSE`)
 
 ---
