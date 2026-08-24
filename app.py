@@ -222,7 +222,7 @@ class App:
         self.count_lbl = tk.Label(th, text="0", font=self.F_COUNT, bg=CARD,
                                   fg=ACCENT)
         self.count_lbl.pack(side="left", padx=(8, 0))
-        tk.Checkbutton(th, text="완료 표시", variable=self.show_closed,
+        tk.Checkbutton(th, text="오늘 완료 표시", variable=self.show_closed,
                        command=self.refresh_table, bg=CARD, fg=MUTED,
                        font=self.F_S, activebackground=CARD,
                        selectcolor=CARD).pack(side="right")
@@ -268,6 +268,27 @@ class App:
         self.load_briefing()
         self.refresh_table()
         self.maybe_auto_analyze()
+        self._mtimes = self._current_mtimes()
+        self.root.after(30_000, self._watch_files)
+
+    def _current_mtimes(self):
+        return tuple(p.stat().st_mtime if p.exists() else 0
+                     for p in (TASKS_FILE, LATEST))
+
+    def _watch_files(self):
+        """매시간 백그라운드 분석이 파일을 갱신하면 열려 있는 창도 따라 갱신."""
+        if not self.analyzing:
+            m = self._current_mtimes()
+            if m != self._mtimes:
+                self._mtimes = m
+                self.state = load_state()
+                self.load_briefing()
+                self.refresh_table()
+        self.root.after(30_000, self._watch_files)
+
+    def save(self):
+        self.save()
+        self._mtimes = self._current_mtimes()
 
     def _tick(self):
         now = datetime.now()
@@ -349,7 +370,14 @@ class App:
         if self.project_filter is not None:
             tasks = [t for t in tasks
                      if (t.get("project") or "") == self.project_filter]
-        if not self.show_closed.get():
+        if self.show_closed.get():
+            # 완료는 오늘 처리한 것만 보여준다 (누적 방지)
+            today = f"{datetime.now():%Y-%m-%d}"
+            tasks = [t for t in tasks
+                     if t["status"] in ("진행", "보류")
+                     or (t["status"] == "완료"
+                         and t.get("updated", "")[:10] == today)]
+        else:
             tasks = [t for t in tasks if t["status"] in ("진행", "보류")]
         # 완료 표시가 켜져 있으면 완료를 위에 모아서 보여준다
         return sorted(tasks, key=lambda t: (
@@ -458,7 +486,7 @@ class App:
                 t["status"] = "진행" if t["status"] == "완료" else "완료"
                 t["updated"] = f"{datetime.now():%Y-%m-%d %H:%M}"
                 t.pop("auto_note", None)
-                save_state(self.state)
+                self.save()
                 self.refresh_table()
             return "break"
 
@@ -521,7 +549,7 @@ class App:
         t["status"] = status
         t["updated"] = f"{datetime.now():%Y-%m-%d %H:%M}"
         t.pop("auto_note", None)
-        save_state(self.state)
+        self.save()
         self.refresh_table()
 
     def toggle_hold(self):
@@ -539,7 +567,7 @@ class App:
             return
         self.state["tasks"].remove(t)
         self.state["deleted"].append(t["title"])  # 재추가 방지용 숨은 목록
-        save_state(self.state)
+        self.save()
         self.refresh_table()
 
     def add_task(self):
@@ -600,7 +628,7 @@ class App:
                 task.update(title=title, project=fields["project"].get().strip(),
                             due=due, note=fields["note"].get().strip(), updated=now)
                 task["source"] = "manual"
-            save_state(self.state)
+            self.save()
             self.refresh_table()
             win.destroy()
 
@@ -627,7 +655,7 @@ class App:
 
         def work():
             try:
-                analyze.run()
+                analyze.run(force=True)
                 err = None
             except Exception as e:
                 err = str(e)
@@ -648,6 +676,7 @@ class App:
         self.state = load_state()
         self.load_briefing()
         self.refresh_table()
+        self._mtimes = self._current_mtimes()
 
     # ----- 전체 검색 -----
     def open_search(self):
@@ -700,13 +729,13 @@ class App:
 
 
 def install_schedule():
-    """이 exe를 매일 08:50 자동 분석으로 작업 스케줄러에 등록."""
+    """이 exe를 매시간 자동 분석으로 작업 스케줄러에 등록 (PC 켜져 있을 때만 실행됨)."""
     exe = sys.executable if getattr(sys, "frozen", False) else None
     if not exe:
         raise RuntimeError("스케줄 등록은 exe 버전에서만 지원합니다.")
     subprocess.run(
-        ["schtasks", "/Create", "/TN", "WorkStatusDaily", "/SC", "DAILY",
-         "/ST", "08:50", "/F", "/TR", f'"{exe}" --analyze'],
+        ["schtasks", "/Create", "/TN", "WorkStatusHourly", "/SC", "HOURLY",
+         "/MO", "1", "/ST", "08:50", "/F", "/TR", f'"{exe}" --analyze'],
         check=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
 
@@ -721,7 +750,8 @@ if __name__ == "__main__":
         try:
             install_schedule()
             messagebox.showinfo("Work Status",
-                                "매일 08:50 자동 분석이 등록되었습니다.")
+                                "매시간 자동 분석이 등록되었습니다. "
+                                "(PC가 켜져 있는 동안, 새 대화가 있을 때만 실행)")
         except Exception as e:
             messagebox.showerror("Work Status", f"등록 실패: {e}")
         sys.exit(0)

@@ -9,7 +9,7 @@ exe 파일 또는 GitHub 파일을 받아 새 PC에 설치할 때 아래 순서�
 
 1. **Windows 10/11 전용**입니다. (Mac 미지원)
 2. **Claude Code가 설치되고 로그인되어 있어야 합니다.**
-   - 이 프로그램은 자체 AI가 없고, 그 PC에 설치된 Claude Code를 빌려 분석을 실행합니다. 따라서 Claude 유료 구독이 있어야 하며, 분석(하루 1회)이 구독 사용량을 일부 소모합니다.
+   - 이 프로그램은 자체 AI가 없고, 그 PC에 설치된 Claude Code를 빌려 분석을 실행합니다. 따라서 Claude 유료 구독이 있어야 하며, 자동 분석이 구독 사용량을 일부 소모합니다. (매시간 실행되지만 새 대화가 있을 때만 AI를 호출합니다)
 3. **분석 대상은 Claude Code 대화 기록뿐입니다.**
    - Claude Code(VSCode 확장, 터미널)로 작업한 기록은 PC에 파일로 남아 이 프로그램이 읽을 수 있습니다.
    - claude.ai 웹사이트/앱에서 나눈 대화는 PC에 저장되지 않아 읽지 못합니다.
@@ -31,7 +31,7 @@ exe 파일 또는 GitHub 파일을 받아 새 PC에 설치할 때 아래 순서�
 3. exe를 실행합니다. 처음이라 SmartScreen 파란 경고창이 뜨는 경우 → **[추가 정보] → [실행]**을 누르면 됩니다.
    - [실행] 버튼 자체가 없이 차단되는 경우: 그 PC는 Smart App Control이 켜져 있는 것입니다. 이 기능은 한 번 끄면 Windows를 재설치하기 전까지 다시 켤 수 없으므로, 끄지 말고 **방법 B**로 설치하는 것을 권합니다.
 4. 창이 뜨면 **[새로고침]** 버튼을 누릅니다. 첫 정리가 만들어지는 데 2~4분 걸립니다.
-5. (선택) 매일 아침 08:50 자동 분석을 원하면, 명령 프롬프트에서 한 번 실행합니다:
+5. (선택) 매시간 자동 분석(새 대화가 있을 때만 AI 실행)을 원하면, 명령 프롬프트에서 한 번 실행합니다:
    ```
    cd C:\WorkStatus
    WorkStatus.exe --install-schedule
@@ -59,10 +59,10 @@ exe가 차단되는 PC에서 쓰는 방법입니다. Python 공식 설치본은 
    cd C:\WorkStatus
    pythonw app.py
    ```
-5. (선택) 아침 자동 분석 등록 — 아래에서 두 경로를 본인 PC에 맞게 바꿔 한 번 실행합니다.
+5. (선택) 매시간 자동 분석 등록 — 아래에서 두 경로를 본인 PC에 맞게 바꿔 한 번 실행합니다.
    `pythonw.exe` 위치는 `where pythonw`로 확인할 수 있습니다.
    ```
-   schtasks /Create /TN WorkStatusDaily /SC DAILY /ST 08:50 /F /TR "\"C:\...\pythonw.exe\" \"C:\WorkStatus\analyze.py\""
+   schtasks /Create /TN WorkStatusHourly /SC HOURLY /MO 1 /ST 08:50 /F /TR "\"C:\...\pythonw.exe\" \"C:\WorkStatus\analyze.py\""
    ```
 6. (선택) 바로가기: 바탕화면 우클릭 → [새로 만들기] → [바로 가기], 항목 위치에
    `"C:\...\pythonw.exe" "C:\WorkStatus\app.py"` 입력. 아이콘은 [속성] → [아이콘 변경]에서 폴더 안 `app.ico` 선택.
@@ -76,4 +76,4 @@ exe가 차단되는 PC에서 쓰는 방법입니다. Python 공식 설치본은 
 | 새로고침은 되는데 내용이 비어 있음 | 그 PC에 Claude Code 대화 기록이 아직 없는 것입니다. Claude Code로 작업한 뒤 다시 누르면 됩니다. |
 | exe가 실행조차 안 됨 (경고창에 실행 버튼 없음) | Smart App Control 차단입니다. 방법 B로 설치합니다. |
 | 글꼴이 어색함 | Pretendard 자동 설치가 실패하면 기본 글꼴로 대체됩니다. 동작에는 문제가 없으며, [Pretendard](https://github.com/orioncactus/pretendard)를 직접 설치하면 원래 모습이 됩니다. |
-| 아침 자동 분석이 안 도는 것 같음 | 그 시각에 PC가 꺼져 있으면 실행되지 않습니다. 다만 프로그램을 열 때 마지막 분석이 20시간 넘게 지났으면 자동으로 새로고침이 시작되므로, 놓친 날도 창만 열면 따라잡습니다. |
+| 자동 분석이 안 도는 것 같음 | PC가 꺼져 있는 시간에는 실행되지 않습니다. 또한 직전 분석 후 55분이 지나지 않았거나 새 대화가 없으면 건너뛰는 것이 정상입니다. 프로그램을 열 때 마지막 분석이 20시간 넘게 지났으면 자동으로 새로고침이 시작됩니다. |

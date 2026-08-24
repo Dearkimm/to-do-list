@@ -117,7 +117,8 @@ briefing 작성 형식(이모지·장식·과장 금지, 담백한 한국어):
 - 대화나 문서에서 발견한 기한 문장의 요지와 환산한 날짜 (없으면 "새로 발견된 기한 없음")
 
 규칙:
-- new_tasks: 대화·문서에서 "~까지 해야 한다"류의 할 일과 기한을 찾아 추가하되, 현재 목록이나 아래 "삭제된 항목"에 이미 같은 일이 있으면 다시 넣지 않는다.
+- new_tasks: 대화·문서에서 "~까지 해야 한다"류의 할 일과 기한을 찾아 추가한다. 추가 전에 반드시 현재 목록·삭제된 항목과 **의미를 비교**하여, 워딩이 달라도 같은 일이면 절대 추가하지 않는다. (예: "5차 쿼리 실행"과 "DB 쿼리 돌리기"는 같은 일) 애매하면 추가하지 않는 쪽을 택한다.
+- new_tasks의 title은 20자 내외로 간결하게 핵심만 쓴다. 파일명·테이블명·배경 설명 등 세부사항은 전부 note에 넣는다.
 - 상대적 기한("다음 주 수요일까지", "킥오프 전")은 오늘 날짜 기준 구체 날짜로 환산하고, 근거가 약하면 due를 null로 둔다.
 - updates: 대화에서 끝났다고 확인되는 기존 할 일만 status "완료"로 제안한다. status 값은 진행/보류/완료 중 하나.
 - 확실하지 않은 것은 만들어내지 않는다.
@@ -187,11 +188,17 @@ def merge(state, result):
         })
 
 
-def run(days=None):
+def run(days=None, force=False):
     INBOX.mkdir(exist_ok=True)
     (INBOX / "processed").mkdir(exist_ok=True)
     state = load_state()
     now = datetime.now().astimezone()
+    # 매시간 스케줄 실행 시: 직전 분석이 55분 이내면 건너뛴다 (수동 새로고침은 예외)
+    if not force and days is None and state["last_run"]:
+        elapsed = (now - datetime.fromisoformat(state["last_run"])).total_seconds()
+        if elapsed < 55 * 60:
+            log(f"건너뜀: 마지막 분석 후 {int(elapsed // 60)}분")
+            return
     if days is not None:
         since = now - timedelta(days=days)
     elif state["last_run"]:
@@ -203,6 +210,13 @@ def run(days=None):
     digest = collect.build_digest(since)
     inbox_text, inbox_files = read_inbox()
     log(f"수집 완료: 발췌 {len(digest):,}자, 문서 {len(inbox_files)}건")
+
+    # 새 대화도 문서도 없으면 AI 호출 없이 종료 (구독 사용량 절약)
+    if not digest.strip() and not inbox_files:
+        state["last_run"] = now.isoformat()
+        save_state(state)
+        log("새 내용 없음: AI 호출 생략")
+        return
 
     raw = call_claude(build_prompt(digest, inbox_text, state["tasks"],
                                    state.get("deleted", [])))
