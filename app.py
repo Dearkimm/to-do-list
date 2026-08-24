@@ -287,8 +287,14 @@ class App:
         self.root.after(30_000, self._watch_files)
 
     def save(self):
-        self.save()
+        save_state(self.state)
         self._mtimes = self._current_mtimes()
+
+    def _sync_state(self):
+        """백그라운드 분석이 파일을 바꿨으면 최신 상태를 먼저 읽는다 (덮어쓰기 방지)."""
+        if self._current_mtimes() != self._mtimes:
+            self.state = load_state()
+            self._mtimes = self._current_mtimes()
 
     def _tick(self):
         now = datetime.now()
@@ -442,6 +448,7 @@ class App:
         return make(True), make(False)
 
     def refresh_table(self):
+        prev_sel = self.tree.selection()
         self.tree.delete(*self.tree.get_children())
         open_count = hold_count = 0
         for t in self.visible_tasks():
@@ -462,6 +469,8 @@ class App:
                              values=(t["status"], due_text, title,
                                      t.get("project") or ""))
         self.count_lbl.configure(text=str(open_count))
+        if prev_sel and self.tree.exists(prev_sel[0]):
+            self.tree.selection_set(prev_sel[0])
         last = self.state.get("last_run")
         if last:
             dt = datetime.fromisoformat(last)
@@ -481,13 +490,14 @@ class App:
             return
         if self.tree.identify_column(event.x) == "#0":  # 체크박스 칸
             row = self.tree.identify_row(event.y)
+            self._sync_state()
             t = self.find_task(row)
             if t:
                 t["status"] = "진행" if t["status"] == "완료" else "완료"
                 t["updated"] = f"{datetime.now():%Y-%m-%d %H:%M}"
                 t.pop("auto_note", None)
                 self.save()
-                self.refresh_table()
+            self.refresh_table()
             return "break"
 
     def show_detail(self):
@@ -543,13 +553,16 @@ class App:
 
     # ----- 할 일 편집 -----
     def set_status(self, status):
-        t = self.selected()
-        if not t:
+        sel = self.tree.selection()
+        if not sel:
             return
-        t["status"] = status
-        t["updated"] = f"{datetime.now():%Y-%m-%d %H:%M}"
-        t.pop("auto_note", None)
-        self.save()
+        self._sync_state()
+        t = self.find_task(sel[0])
+        if t:
+            t["status"] = status
+            t["updated"] = f"{datetime.now():%Y-%m-%d %H:%M}"
+            t.pop("auto_note", None)
+            self.save()
         self.refresh_table()
 
     def toggle_hold(self):
@@ -565,9 +578,13 @@ class App:
                                    f'"{t["title"]}"\n\n정말 삭제할까요? '
                                    "목록에서 완전히 사라집니다."):
             return
-        self.state["tasks"].remove(t)
-        self.state["deleted"].append(t["title"])  # 재추가 방지용 숨은 목록
-        self.save()
+        tid = t["id"]
+        self._sync_state()
+        t = self.find_task(tid)
+        if t:
+            self.state["tasks"].remove(t)
+            self.state["deleted"].append(t["title"])  # 재추가 방지용 숨은 목록
+            self.save()
         self.refresh_table()
 
     def add_task(self):
@@ -616,6 +633,7 @@ class App:
                                            parent=win)
                     return
             now = f"{datetime.now():%Y-%m-%d %H:%M}"
+            self._sync_state()
             if task is None:
                 self.state["seq"] += 1
                 self.state["tasks"].append({
@@ -625,9 +643,16 @@ class App:
                     "source": "manual", "created": now, "updated": now,
                 })
             else:
-                task.update(title=title, project=fields["project"].get().strip(),
-                            due=due, note=fields["note"].get().strip(), updated=now)
-                task["source"] = "manual"
+                t = self.find_task(task["id"])
+                if t is None:
+                    messagebox.showwarning("확인", "항목이 이미 삭제되어 저장할 수 없습니다.",
+                                           parent=win)
+                    win.destroy()
+                    self.refresh_table()
+                    return
+                t.update(title=title, project=fields["project"].get().strip(),
+                         due=due, note=fields["note"].get().strip(), updated=now)
+                t["source"] = "manual"
             self.save()
             self.refresh_table()
             win.destroy()

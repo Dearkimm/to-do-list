@@ -120,7 +120,7 @@ briefing 작성 형식(이모지·장식·과장 금지, 담백한 한국어):
 - new_tasks: 대화·문서에서 "~까지 해야 한다"류의 할 일과 기한을 찾아 추가한다. 추가 전에 반드시 현재 목록·삭제된 항목과 **의미를 비교**하여, 워딩이 달라도 같은 일이면 절대 추가하지 않는다. (예: "5차 쿼리 실행"과 "DB 쿼리 돌리기"는 같은 일) 애매하면 추가하지 않는 쪽을 택한다.
 - new_tasks의 title은 20자 내외로 간결하게 핵심만 쓴다. 파일명·테이블명·배경 설명 등 세부사항은 전부 note에 넣는다.
 - 상대적 기한("다음 주 수요일까지", "킥오프 전")은 오늘 날짜 기준 구체 날짜로 환산하고, 근거가 약하면 due를 null로 둔다.
-- updates: 대화에서 끝났다고 확인되는 기존 할 일만 status "완료"로 제안한다. status 값은 진행/보류/완료 중 하나.
+- updates: 대화에서 끝났다고 확인되는 기존 할 일만 status "완료"로 제안한다. "완료" 이외의 status는 절대 제안하지 않는다.
 - 확실하지 않은 것은 만들어내지 않는다.
 
 ### 현재 할 일 목록
@@ -163,9 +163,9 @@ def merge(state, result):
     by_id = {t["id"]: t for t in state["tasks"]}
     for upd in result.get("updates", []):
         t = by_id.get(upd.get("id"))
-        status = upd.get("status")
-        if t and status in STATUSES and t["status"] != status:
-            t["status"] = status
+        # AI 제안은 진행/보류 → 완료 방향만 허용 (사용자가 정한 상태를 되돌리지 못하게)
+        if t and upd.get("status") == "완료" and t["status"] in ("진행", "보류"):
+            t["status"] = "완료"
             t["updated"] = now
             t["auto_note"] = f'자동 변경: {upd.get("reason", "")}'.strip()
     existing_titles = {t["title"] for t in state["tasks"]} | set(
@@ -222,6 +222,9 @@ def run(days=None, force=False):
                                    state.get("deleted", [])))
     result = parse_json(raw)
 
+    # AI 호출에 수 분이 걸리므로, 그 사이 사용자가 바꾼 상태를 잃지 않게
+    # 디스크에서 최신 상태를 다시 읽은 뒤 병합한다
+    state = load_state()
     merge(state, result)
     state["last_run"] = now.isoformat()
     save_state(state)
