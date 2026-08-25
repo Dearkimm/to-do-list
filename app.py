@@ -536,7 +536,7 @@ class App:
                                                     pady=(10, 0))
             block = tk.Frame(win, bg="#fff5f9")
             block.pack(fill="x", padx=16, pady=(10, 0))
-            tk.Label(block, text="상세 메모  (드래그해서 선택 후 Ctrl+C 가능)",
+            tk.Label(block, text="상세 메모",
                      font=self.F_TB, bg="#fff5f9", fg=ACCENT,
                      anchor="w").pack(fill="x", padx=10, pady=(8, 0))
             body = (t.get("note") or "")
