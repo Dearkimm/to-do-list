@@ -190,9 +190,12 @@ class App:
         self._tick()
 
         # ----- 하단 버튼/상태 (창 크기와 무관하게 항상 보이도록 먼저 배치) -----
-        self.status_lbl = tk.Label(root, text="", font=self.F_T, bg=PALE,
+        status_bar = tk.Frame(root, bg=PALE)
+        status_bar.pack(side="bottom", fill="x", padx=21, pady=(0, 8))
+        # 글자 너비만큼만 차지하게 해서 마우스오버 안내가 글자 위에서만 뜨도록
+        self.status_lbl = tk.Label(status_bar, text="", font=self.F_T, bg=PALE,
                                    fg=MUTED, anchor="w")
-        self.status_lbl.pack(side="bottom", fill="x", padx=21, pady=(0, 8))
+        self.status_lbl.pack(side="left")
         self._tip_text = ""
         self._tip = None
         self.status_lbl.bind("<Enter>", self._show_tip)
