@@ -196,10 +196,11 @@ def run(days=None, force=False):
     (INBOX / "processed").mkdir(exist_ok=True)
     state = load_state()
     now = datetime.now().astimezone()
-    # 매시간 스케줄 실행 시: 직전 분석이 55분 이내면 건너뛴다 (수동 새로고침은 예외)
+    # 스케줄 실행 시: 직전 분석이 10분 이내면 진짜 중복이므로 건너뛴다 (수동 새로고침은 예외)
+    # (새 대화가 없으면 아래에서 AI 호출 없이 끝나므로 이 이상 막을 필요가 없다)
     if not force and days is None and state["last_run"]:
         elapsed = (now - datetime.fromisoformat(state["last_run"])).total_seconds()
-        if elapsed < 55 * 60:
+        if elapsed < 10 * 60:
             log(f"건너뜀: 마지막 분석 후 {int(elapsed // 60)}분")
             return
     if days is not None:
