@@ -474,8 +474,16 @@ class App:
         last = self.state.get("last_run")
         if last:
             dt = datetime.fromisoformat(last)
+            now = datetime.now()
+            # 스케줄러는 매시 50분에 실행. 직전 분석 55분 이내면 그 회차는 건너뜀
+            nxt = now.replace(minute=50, second=0, microsecond=0)
+            if nxt <= now:
+                nxt += timedelta(hours=1)
+            while (nxt - dt.replace(tzinfo=None)).total_seconds() < 55 * 60:
+                nxt += timedelta(hours=1)
             self.status_lbl.configure(
-                text=f"문서 상태: 저장됨 · 마지막 분석 {dt:%m-%d %H:%M}")
+                text=f"문서 상태: 저장됨 · 마지막 분석 {dt:%m-%d %H:%M} · "
+                     f"다음 자동 분석 {nxt:%H:%M} (새 대화 없으면 건너뜀)")
 
     def find_task(self, tid):
         return next((t for t in self.state["tasks"] if t["id"] == tid), None)
