@@ -193,6 +193,10 @@ class App:
         self.status_lbl = tk.Label(root, text="", font=self.F_T, bg=PALE,
                                    fg=MUTED, anchor="w")
         self.status_lbl.pack(side="bottom", fill="x", padx=21, pady=(0, 8))
+        self._tip_text = ""
+        self._tip = None
+        self.status_lbl.bind("<Enter>", self._show_tip)
+        self.status_lbl.bind("<Leave>", self._hide_tip)
         bar = tk.Frame(root, bg=PALE)
         bar.pack(side="bottom", fill="x", padx=20, pady=(8, 4))
         for text, cmd in (("수정", self.edit_task),
@@ -295,6 +299,23 @@ class App:
         if self._current_mtimes() != self._mtimes:
             self.state = load_state()
             self._mtimes = self._current_mtimes()
+
+    def _show_tip(self, event):
+        if not self._tip_text or self._tip is not None:
+            return
+        tip = tk.Toplevel(self.root)
+        tip.overrideredirect(True)
+        tip.attributes("-topmost", True)
+        tip.configure(bg=BORDER)
+        tk.Label(tip, text=self._tip_text, font=self.F_T, bg=CARD, fg=FG,
+                 justify="left", padx=10, pady=6).pack(padx=1, pady=1)
+        tip.geometry(f"+{event.x_root + 12}+{event.y_root - 48}")
+        self._tip = tip
+
+    def _hide_tip(self, _event=None):
+        if self._tip is not None:
+            self._tip.destroy()
+            self._tip = None
 
     def _tick(self):
         now = datetime.now()
@@ -482,8 +503,10 @@ class App:
             while (nxt - dt.replace(tzinfo=None)).total_seconds() < 55 * 60:
                 nxt += timedelta(hours=1)
             self.status_lbl.configure(
-                text=f"문서 상태: 저장됨 · 마지막 분석 {dt:%m-%d %H:%M} · "
-                     f"다음 자동 분석 {nxt:%H:%M} (새 대화 없으면 건너뜀)")
+                text=f"문서 상태: 저장됨 · 마지막 분석 {dt:%m-%d %H:%M}")
+            self._tip_text = (f"다음 자동 분석 {nxt:%H:%M}\n"
+                              "매시 50분 실행 · 직전 분석 55분 이내거나 "
+                              "새 대화가 없으면 건너뜁니다")
 
     def find_task(self, tid):
         return next((t for t in self.state["tasks"] if t["id"] == tid), None)
