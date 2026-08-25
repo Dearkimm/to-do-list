@@ -523,23 +523,34 @@ class App:
         tk.Label(win, text=t["title"], font=self.F_B, bg=CARD, fg=FG,
                  anchor="w", justify="left",
                  wraplength=int(420 * s)).pack(fill="x", padx=16)
+
+        # 복사 대상 전체 텍스트
+        full_text = t["title"]
+        if t.get("note"):
+            full_text += "\n\n" + t["note"]
+        if meta:
+            full_text += "\n\n" + meta
+
         if t.get("note") or t.get("auto_note"):
             tk.Frame(win, bg=BORDER, height=1).pack(fill="x", padx=16,
                                                     pady=(10, 0))
             block = tk.Frame(win, bg="#fff5f9")
             block.pack(fill="x", padx=16, pady=(10, 0))
-            tk.Label(block, text="상세 메모", font=self.F_TB, bg="#fff5f9",
-                     fg=ACCENT, anchor="w").pack(fill="x", padx=10, pady=(8, 0))
-            if t.get("note"):
-                tk.Label(block, text=t["note"], font=self.F_S, bg="#fff5f9",
-                         fg=FG, anchor="w", justify="left",
-                         wraplength=int(400 * s)).pack(fill="x", padx=10,
-                                                       pady=(2, 8))
+            tk.Label(block, text="상세 메모  (드래그해서 선택 후 Ctrl+C 가능)",
+                     font=self.F_TB, bg="#fff5f9", fg=ACCENT,
+                     anchor="w").pack(fill="x", padx=10, pady=(8, 0))
+            body = (t.get("note") or "")
             if t.get("auto_note"):
-                tk.Label(block, text=t["auto_note"], font=self.F_T,
-                         bg="#fff5f9", fg=MUTED, anchor="w", justify="left",
-                         wraplength=int(400 * s)).pack(fill="x", padx=10,
-                                                       pady=(0, 8))
+                body += ("\n\n" if body else "") + t["auto_note"]
+            lines = max(2, min(12, sum(len(l) // 45 + 1 for l in body.splitlines())))
+            memo = tk.Text(block, font=self.F_S, bg="#fff5f9", fg=FG, wrap="word",
+                           relief="flat", height=lines, width=52, padx=0, pady=0,
+                           selectbackground=SOFT, selectforeground=FG,
+                           highlightthickness=0)
+            memo.insert("1.0", body)
+            memo.configure(state="disabled")
+            memo.pack(fill="x", padx=10, pady=(2, 8))
+
         btns = tk.Frame(win, bg=CARD)
         btns.pack(fill="x", padx=16, pady=12)
 
@@ -547,9 +558,23 @@ class App:
             win.destroy()
             self.task_dialog(t)
 
-        self.pink_button(btns, "수정", edit).pack(side="left")
+        def copy_all(_e=None):
+            self.root.clipboard_clear()
+            self.root.clipboard_append(full_text)
+            btn_copy.configure(text="복사됨")
+            win.after(1500, lambda: btn_copy.configure(text="복사")
+                      if btn_copy.winfo_exists() else None)
+
+        btn_copy = self.pink_button(btns, "복사", copy_all)
+        btn_copy.pack(side="left")
+        self.pink_button(btns, "수정", edit).pack(side="left", padx=(6, 0))
         self.pink_button(btns, "닫기", win.destroy).pack(side="right")
         win.bind("<Escape>", lambda e: win.destroy())
+        # 메모 영역에서 텍스트를 선택 중이면 Tk 기본 복사가 동작하고,
+        # 그 외에는 Ctrl+C로 전체 내용을 복사한다
+        win.bind("<Control-c>", lambda e: None if (e.widget.winfo_class() == "Text"
+                                                    and e.widget.tag_ranges("sel"))
+                  else copy_all())
 
     # ----- 할 일 편집 -----
     def set_status(self, status):

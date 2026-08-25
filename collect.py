@@ -16,7 +16,7 @@ else:
     _SELF_DIR = Path(__file__).parent
 _SELF_TOKEN = re.sub(r"[^A-Za-z0-9]", "-", str(_SELF_DIR))
 MAX_USER_CHARS = 3000
-MAX_ASSIST_CHARS = 1500
+MAX_ASSIST_CHARS = 1800
 MAX_TOTAL_CHARS = 150_000
 
 
@@ -37,6 +37,13 @@ def _texts_from_content(content):
             if isinstance(block, dict) and block.get("type") == "text":
                 out.append(block.get("text", ""))
     return out
+
+
+def _clip(text, limit, tail):
+    """긴 메시지는 앞부분 + 뒷부분을 남긴다 (완료 보고는 보통 끝에 나온다)."""
+    if len(text) <= limit:
+        return text
+    return text[: limit - tail] + "\n…(중략)…\n" + text[-tail:]
 
 
 def _keep_user_text(t):
@@ -81,11 +88,11 @@ def iter_session_messages(jsonl_path, since=None, until=None):
                     continue
                 for t in _texts_from_content(msg.get("content")):
                     if _keep_user_text(t):
-                        yield ts, "사용자", t[:MAX_USER_CHARS], cwd
+                        yield ts, "사용자", _clip(t, MAX_USER_CHARS, 600), cwd
             elif typ == "assistant":
                 joined = "\n".join(_texts_from_content(msg.get("content"))).strip()
                 if joined:
-                    yield ts, "Claude", joined[:MAX_ASSIST_CHARS], cwd
+                    yield ts, "Claude", _clip(joined, MAX_ASSIST_CHARS, 700), cwd
 
 
 def _session_files():
