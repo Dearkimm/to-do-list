@@ -137,21 +137,49 @@ briefing 작성 형식(이모지·장식·과장 금지, 담백한 한국어):
 {inbox_text}"""
 
 
+FALLBACK_MODEL = "sonnet"   # 주 모델 과부하(529) 시 자동 대체
+CLAUDE_TIMEOUT = 420        # 초. 재시도 포함 이 이상 걸리면 실패로 처리
+LOCK_FILE = BASE / "analyze.lock"
+
+
 def call_claude(prompt):
-    proc = subprocess.run(
-        [find_claude(), "-p", "--model", MODEL],
-        input=prompt,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=900,
-        cwd=str(BASE),
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
+    # 헤드리스 실행엔 MCP 커넥터(Gmail·Notion 등)가 필요 없다 — 로딩 생략으로 속도·안정성 확보
+    empty_mcp = BASE / "empty_mcp.json"
+    if not empty_mcp.exists():
+        empty_mcp.write_text('{"mcpServers":{}}', encoding="utf-8")
+    cmd = [find_claude(), "-p", "--model", MODEL, "--fallback-model", FALLBACK_MODEL,
+           "--strict-mcp-config", "--mcp-config", str(empty_mcp)]
+    try:
+        proc = subprocess.run(
+            cmd, input=prompt, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=CLAUDE_TIMEOUT, cwd=str(BASE),
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Claude 응답 없음 ({CLAUDE_TIMEOUT // 60}분 초과) — 서버 과부하 가능성, 잠시 후 다시 시도")
     if proc.returncode != 0:
-        raise RuntimeError(f"claude -p 실패 (code {proc.returncode}): {proc.stderr[:500]}")
+        detail = (proc.stderr or "").strip() or (proc.stdout or "").strip()[-300:]
+        if "529" in detail or "overloaded" in detail.lower():
+            raise RuntimeError("Claude 서버 과부하(529) — 잠시 후 다시 시도")
+        raise RuntimeError(f"claude -p 실패 (code {proc.returncode}): {detail[:300]}")
     return proc.stdout
+
+
+def acquire_lock():
+    """분석 중복 실행 방지. 10분 넘은 잠금은 죽은 것으로 보고 무시."""
+    if LOCK_FILE.exists():
+        age = datetime.now().timestamp() - LOCK_FILE.stat().st_mtime
+        if age < 600:
+            return False
+    LOCK_FILE.write_text(str(datetime.now()), encoding="utf-8")
+    return True
+
+
+def release_lock():
+    try:
+        LOCK_FILE.unlink()
+    except OSError:
+        pass
 
 
 def parse_json(raw):
@@ -192,6 +220,18 @@ def merge(state, result):
 
 
 def run(days=None, force=False):
+    if not acquire_lock():
+        log("건너뜀: 다른 분석이 진행 중")
+        if force:
+            raise RuntimeError("다른 분석이 진행 중입니다 — 잠시 후 다시 시도")
+        return
+    try:
+        _run(days, force)
+    finally:
+        release_lock()
+
+
+def _run(days, force):
     INBOX.mkdir(exist_ok=True)
     (INBOX / "processed").mkdir(exist_ok=True)
     state = load_state()

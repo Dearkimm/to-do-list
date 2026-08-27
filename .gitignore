@@ -6,6 +6,10 @@ briefings/
 logs/
 inbox/
 
+# 실행 중 생성되는 파일
+empty_mcp.json
+analyze.lock
+
 # 빌드 산출물
 build/
 dist/
