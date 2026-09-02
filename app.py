@@ -283,15 +283,20 @@ class App:
                      for p in (TASKS_FILE, LATEST))
 
     def _watch_files(self):
-        """매시간 백그라운드 분석이 파일을 갱신하면 열려 있는 창도 따라 갱신."""
-        if not self.analyzing:
-            m = self._current_mtimes()
-            if m != self._mtimes:
-                self._mtimes = m
-                self.state = load_state()
-                self.load_briefing()
-                self.refresh_table()
-        self.root.after(30_000, self._watch_files)
+        """매시간 백그라운드 분석이 파일을 갱신하면 열려 있는 창도 따라 갱신.
+        일시적 오류(분석기가 파일을 쓰는 순간과 겹침 등)가 나도 감시는 계속 돈다."""
+        try:
+            if not self.analyzing:
+                m = self._current_mtimes()
+                if m != self._mtimes:
+                    self._mtimes = m
+                    self.state = load_state()
+                    self.load_briefing()
+                    self.refresh_table()
+        except Exception:
+            pass
+        finally:
+            self.root.after(30_000, self._watch_files)
 
     def save(self):
         save_state(self.state)
@@ -321,10 +326,14 @@ class App:
             self._tip = None
 
     def _tick(self):
-        now = datetime.now()
-        self.clock_lbl.configure(
-            text=f"{now:%Y.%m.%d} · {WEEKDAYS[now.weekday()]} · {now:%H:%M}")
-        self.root.after(1000, self._tick)
+        try:
+            now = datetime.now()
+            self.clock_lbl.configure(
+                text=f"{now:%Y.%m.%d} · {WEEKDAYS[now.weekday()]} · {now:%H:%M}")
+        except Exception:
+            pass
+        finally:
+            self.root.after(1000, self._tick)
 
     def pink_button(self, parent, text, cmd):
         return tk.Button(parent, text=text, command=cmd, font=self.F_S, bg=CARD,
@@ -339,6 +348,10 @@ class App:
             text = "\n".join(lines[2:]).strip() if len(lines) > 2 else ""
         else:
             text = "아직 정리된 내용이 없습니다. [새로고침]을 눌러 만드세요."
+        try:  # 갱신 후에도 보고 있던 탭 유지
+            cur_tab = self.nb.index(self.nb.select())
+        except Exception:
+            cur_tab = 0
         for tab in self.nb.tabs():
             self.nb.forget(tab)
         s = self.scale
@@ -365,6 +378,9 @@ class App:
             txt.pack(side="left", fill="both", expand=True)
             sb.pack(side="right", fill="y")
             self.nb.add(frame, text=f" {title} ")
+        tabs = self.nb.tabs()
+        if tabs:
+            self.nb.select(tabs[min(cur_tab, len(tabs) - 1)])
 
     def project_menu(self):
         menu = tk.Menu(self.root, tearoff=0, bg=CARD, fg=FG, font=self.F_S,
